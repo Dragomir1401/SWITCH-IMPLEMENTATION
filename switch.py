@@ -93,6 +93,11 @@ def forward_with_learning(src_mac, dst_mac, vlan_id, interface, ethertype, mac_c
             print("Sending packet to interface " +
                   str(mac_cam_table[dst_mac]))
             send_to_link(mac_cam_table[dst_mac], data_copy, length_copy)
+        # else if we receive from access and send to access
+        elif vlan_id == -1 and int(switch_config[mac_cam_table[dst_mac]]) == int(switch_config[interface]):
+            print("Sending packet to interface " +
+                  str(mac_cam_table[dst_mac]))
+            send_to_link(mac_cam_table[dst_mac], data_copy, length_copy)
     else:
         # if the type of packet is broadcast, then forward the packet to all
         # interfaces except the one that received the packet
@@ -106,6 +111,10 @@ def forward_with_learning(src_mac, dst_mac, vlan_id, interface, ethertype, mac_c
                                                        data_copy, length_copy, interfaces, ethertype, interface)
                 # send the packet to the interface if it is trunk type or same vlan
                 if switch_config[i] == "T" or vlan_id == int(switch_config[i]):
+                    print("Sending packet to interface " + str(i))
+                    send_to_link(i, data_copy, length_copy)
+                # else if we receive from access and send to access
+                elif vlan_id == -1 and int(switch_config[i]) == int(switch_config[interface]):
                     print("Sending packet to interface " + str(i))
                     send_to_link(i, data_copy, length_copy)
 
@@ -128,11 +137,9 @@ def modify_packet(vlan_id, dst_interface, switch_config, data, length, interface
         # if the packet is coming from trunk port
         else:
             print("Received packet from trunk port")
-            print()
             # if the interface is access type then remove the vlan tag
             if switch_config[dst_interface] != "T":
                 print("Removing vlan tag from the packet and sending it to access port")
-                print()
                 # remove the vlan tag from the packet
                 data = data[0:12] + data[16:]
                 # decrease the length of the packet
