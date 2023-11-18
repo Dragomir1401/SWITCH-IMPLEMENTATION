@@ -37,8 +37,7 @@ def create_vlan_tag(vlan_id):
 
 
 def read_switch_config(switch_id, switch_config, switch_priorities):
-    # TODO Read the switch configuration file
-    # read the switch configuration file from ./configs/switchX.config where X is the switch number
+    # reads the switch configuration file from ./configs/switchX.config where X is the switch number
     # structure of the file:
     # PRIORITY
     # INTERFACE_NAME [VLAN_ID / TRUNK]
@@ -155,7 +154,7 @@ def modify_packet(vlan_id, dst_interface, switch_config, data, length, interface
 
 
 def create_bdpu(root_bridge_id_p, sender_bridge_id, sender_path_cost_p):
-    # create bdpu packet with structure
+    # creates bdpu packet with structure
     # DST_MAC|SRC_MAC|LLC_LENGTH|LLC_HEADER|BPDU_HEADER|BPDU_CONFIG
     # LLC_LENGTH is the total length of the LLC_HEADER and BPDU_HEADER
     # LLC_HEADER has the following structure
@@ -235,7 +234,7 @@ def send_bpdu(interface, root_bridge_id, sender_bridge_id, sender_path_cost):
 
 
 def send_bdpu_every_second(switch_id, interfaces, switch_config, root_bridge_id):
-    # every 1 second, if we are root switch, send out BPDUs
+    # every 1 second, if we are root switch, sends out BPDUs
     while True:
         if switch_id == "0":
             # send out BPDUs
@@ -253,6 +252,7 @@ def send_bdpu_every_second(switch_id, interfaces, switch_config, root_bridge_id)
 
 
 def prepare_stp(switch_id, interfaces, stp_states, switch_config, switch_priorities):
+    # prepare the stp states
     # for each trunk port on the switch, set it as blocking
     for i in interfaces:
         if switch_config[i] == "T":
@@ -422,9 +422,6 @@ def main():
             forward(src_mac, dest_mac, vlan_id, interface,
                     ethertype, mac_cam_table, switch_config,
                     data, length, interfaces, stp_states, switch_id)
-
-        # data is of type bytes.
-        # send_to_link(i, data, length)
 
 
 if __name__ == "__main__":
