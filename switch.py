@@ -180,7 +180,7 @@ def create_bpdu(root_bridge_id_p, sender_bridge_id, sender_path_cost_p):
     # protocol id is 0x00 0x00
     # protocol version id is 0x00
     # bpdu type is 0x00
-    bpdu_header = b'\x00\x00\x00\x00\x00'
+    bpdu_header = b'\x00\x00\x00\x00'
 
     # bpdu config has the structure:
     #   uint8_t  flags;
