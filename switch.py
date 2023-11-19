@@ -7,6 +7,48 @@ import time
 from wrapper import recv_from_any_link, send_to_link, get_switch_mac, get_interface_name
 
 
+class currentSTPState:
+    def __init__(self, priority, root_switch, root_bridge, root_path_cost, current_switch):
+        self.priority = priority
+        self.root_switch = root_switch
+        self.root_bridge = root_bridge
+        self.root_path_cost = root_path_cost
+        self.current_switch = current_switch
+
+    def __str__(self):
+        return "priority: " + str(self.priority) + "\nroot_switch: " + str(self.root_switch) + "\nroot_bridge: " + str(self.root_bridge) + "\nroot_path_cost: " + str(self.root_path_cost)
+
+    def getPrio(self):
+        return self.priority
+
+    def setPriority(self, priority):
+        self.priority = priority
+
+    def getRootSwitch(self):
+        return self.root_switch
+
+    def setRootSwitch(self, root_switch):
+        self.root_switch = root_switch
+
+    def getRootBridge(self):
+        return self.root_bridge
+
+    def setRootBridge(self, root_bridge):
+        self.root_bridge = root_bridge
+
+    def getRootPathCost(self):
+        return self.root_path_cost
+
+    def setRootPathCost(self, root_path_cost):
+        self.root_path_cost = root_path_cost
+
+    def getCurrentSwitch(self):
+        return self.current_switch
+
+    def setCurrentSwitch(self, current_switch):
+        self.current_switch = current_switch
+
+
 def parse_ethernet_header(data):
     # Unpack the header fields from the byte array
     # dest_mac, src_mac, ethertype = struct.unpack('!6s6sH', data[:14])
@@ -239,19 +281,23 @@ def send_bpdu(interface, root_bridge_id, sender_bridge_id, sender_path_cost):
     send_to_link(interface, bpdu, len(bpdu))
 
 
-def send_bpdu_every_second(switch_id, interfaces, switch_config, root_bridge_id, switch_priorities):
+def send_bpdu_every_second(interfaces, switch_config, switch_priorities, currentSTPState):
     # every 1 second, if we are root switch, sends out BPDUs
     while True:
-        if int(switch_priorities[switch_id]) == root_bridge_id:
+        print("comparing YES YESY YES", int(
+            switch_priorities[currentSTPState.getCurrentSwitch()]), " with ", currentSTPState.getRootBridge())
+        if int(switch_priorities[currentSTPState.getCurrentSwitch()]) == currentSTPState.getRootBridge():
             # send out BPDUs
             for i in interfaces:
                 if switch_config[i] == "T":
                     # Set sender path cost to 0
                     sender_path_cost = 0
 
+                    print("Sending BPDU from SWITCH ", currentSTPState.getCurrentSwitch(),
+                          " on interface ", i)
                     # Send BPDU
-                    send_bpdu(i, root_bridge_id,
-                              root_bridge_id, sender_path_cost)
+                    send_bpdu(i, currentSTPState.getRootBridge(),
+                              int(switch_priorities[currentSTPState.getCurrentSwitch()]), sender_path_cost)
 
         # wait 1 second
         time.sleep(1)
@@ -279,9 +325,8 @@ def prepare_stp(switch_id, interfaces, stp_states, switch_config,
     return own_bridge_id, root_bridge_id, root_path_cost, stp_states
 
 
-def parse_bpdu(bpdu, root_bridge_id_p, root_path_cost_p, sender_bridge_id_p,
-               port_id_p, interfaces, switch_id, stp_states, switch_config,
-               own_bridge_id):
+def parse_bpdu(bpdu, currentState, interface, interfaces,
+               stp_states, switch_config, own_bridge_id, port):
     # Parse the BPDU
     root_bridge_id = int.from_bytes(bpdu[22:30], byteorder='big')
     sender_path_cost = int.from_bytes(bpdu[30:34], byteorder='big')
@@ -290,71 +335,71 @@ def parse_bpdu(bpdu, root_bridge_id_p, root_path_cost_p, sender_bridge_id_p,
     print("Parsed Root Bridge ID: " + str(root_bridge_id))
     print("Parsed Sender Path Cost: " + str(sender_path_cost))
     print("Parsed Sender Bridge ID: " + str(sender_bridge_id))
-    print("Global root Bridge ID: " + str(root_bridge_id_p))
-    print("Global root Path Cost: " + str(root_path_cost_p))
-    print("Global sender Bridge ID: " + str(sender_bridge_id_p))
-    print("Port ID: " + str(port_id_p))
+    print("Global root Bridge ID: " + str(currentState.getRootBridge()))
+    print("Global root Path Cost: " + str(currentState.getRootPathCost()))
+    print("Port ID: " + str(port))
 
-    # Set default root port to -1
+    print("Comparing ROOT_BID " + str(root_bridge_id) +
+          " and GLOBAL_ROOT_BID " + str(currentState.getRootBridge()))
+
+    print("Comparing SENDER_BID " + str(sender_bridge_id) +
+          " and OWN_BID " + str(currentState.getRootBridge()))
+
     root_port = -1
 
-    print("Comparing " + str(root_bridge_id) + " and " + str(root_bridge_id_p))
-    if root_bridge_id < root_bridge_id_p:
-        root_bridge_id_p = root_bridge_id
+    if root_bridge_id < currentState.getRootBridge():
+        currentState.setRootBridge(root_bridge_id)
         # Add 10 to the path cost because we have 100 Mbps links
-        root_path_cost_p = sender_path_cost + 10
-        root_port = port_id_p
-
-        print("Root port on switch " + str(switch_id) + " is " + str(root_port))
+        currentState.setRootPathCost(sender_path_cost + 10)
+        root_port = port
 
         # if we were the Root Bridge:
         # set all interfaces not to hosts to BLOCKING except the root port
-        if root_bridge_id_p == root_bridge_id:
+        if own_bridge_id == currentState.getRootBridge():
             for i in interfaces:
                 if switch_config[i] == "T":
                     if i != root_port:
                         print("Setting " + str(i) + " to BLOCKING")
-                        stp_states[(switch_id, i)] = 0
+                        stp_states[(currentState.getCurrentSwitch(), i)] = 0
 
         # if root_port state is BLOCKING:
         # Set root_port state to LISTENING
-        if stp_states[(switch_id, root_port)] == 0:
-            stp_states[(switch_id, root_port)] = 1
+        if stp_states[(currentState.getCurrentSwitch(), root_port)] == 0:
+            stp_states[(currentState.getCurrentSwitch(), root_port)] = 1
 
         # Update and forward this BPDU to all other trunk ports with:
         # sender_bridge_ID = own_bridge_ID
         # sender_path_cost = root_path_cost
         for i in interfaces:
             if switch_config[i] == "T":
-                if i != port_id_p:
+                if i != port:
                     print("Sending BPDU on " + str(i))
-                    sender_bridge_id_p = own_bridge_id
-                    sender_path_cost_p = root_path_cost_p
-                    send_bpdu(i, root_bridge_id_p,
-                              sender_bridge_id_p, sender_path_cost_p)
+                    sender_bridge_id = own_bridge_id
+                    send_bpdu(i, root_bridge_id,
+                              sender_bridge_id, currentState.getRootPathCost())
 
     # else if BPDU.root_bridge_ID == root_bridge_ID
-    elif root_bridge_id == root_bridge_id_p:
-        if port_id_p == root_port and sender_path_cost + 10 < root_path_cost_p:
-            root_path_cost_p = sender_path_cost + 10
-        elif port_id_p != root_port:
-            if sender_path_cost > root_path_cost_p:
-                if stp_states[(switch_id, port_id_p)] != 1:
-                    stp_states[(switch_id, port_id_p)] = 1
+    elif root_bridge_id == currentState.getRootBridge():
+        if port == root_port and sender_path_cost + 10 < currentState.getRootPathCost():
+            currentState.setRootPathCost(sender_path_cost + 10)
+        elif port != root_port:
+            if sender_path_cost > currentState.getRootPathCost():
+                if stp_states[(currentState.getCurrentSwitch(), port)] != 1:
+                    stp_states[(currentState.getCurrentSwitch(), port)] = 1
 
-    elif sender_bridge_id == own_bridge_id:
+    elif sender_bridge_id == currentState.getRootBridge():
         # set the port to BLOCKING
-        print("Setting " + str(port_id_p) + " to BLOCKING")
-        stp_states[(switch_id, port_id_p)] = 0
+        print("Setting " + str(port) + " to BLOCKING")
+        stp_states[(currentState.getCurrentSwitch(), port)] = 0
 
     # Set as designated if we are the root bridge
-    if own_bridge_id == root_bridge_id:
+    if own_bridge_id == currentState.getRootBridge():
         for i in interfaces:
             if switch_config[i] == "T":
-                if stp_states[(switch_id, i)] != 1:
-                    stp_states[(switch_id, i)] = 1
+                if stp_states[(currentState.getCurrentSwitch(), i)] != 1:
+                    stp_states[(currentState.getCurrentSwitch(), i)] = 1
 
-    return root_bridge_id_p, root_path_cost_p
+    return currentState, stp_states
 
 
 def main():
@@ -391,6 +436,9 @@ def main():
     own_bridge_id, root_bridge_id, root_path_cost, stp_states = prepare_stp(
         switch_id, interfaces, stp_states, switch_config, switch_priorities)
 
+    currentState = currentSTPState(
+        own_bridge_id, switch_id, root_bridge_id, root_path_cost, switch_id)
+
     # Print the prepared STP results
     print("[INFO] Prepared STP results")
     print("own_bridge_id: " + str(own_bridge_id))
@@ -405,7 +453,7 @@ def main():
 
     # start the thread that sends out BPDUs every second
     t = threading.Thread(target=send_bpdu_every_second, args=(
-        switch_id, interfaces, switch_config, root_bridge_id, switch_priorities))
+        interfaces, switch_config, switch_priorities, currentState))
     t.start()
 
     # print the switch configuration in human readable format
@@ -442,11 +490,8 @@ def main():
 
         # if the frame is a BPDU, parse it and update the STP state
         if dest_mac == "01:80:c2:00:00:00":
-            root_bridge_id, root_path_cost = parse_bpdu(data, root_bridge_id,
-                                                        root_path_cost, 0, interface,
-                                                        interfaces, switch_id,
-                                                        stp_states, switch_config,
-                                                        own_bridge_id)
+            currentState, stp_states = parse_bpdu(data, currentState, interface, interfaces,
+                                                  stp_states, switch_config, own_bridge_id, interface)
             # print ports statuses
             print("[INFO] PORT states")
             for (switch_id, interface), state in stp_states.items():
