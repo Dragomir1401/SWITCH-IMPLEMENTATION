@@ -1,0 +1,256 @@
+______________________________
+|                            |
+|   Copyright                |
+|      Dragomir Andrei 2023  |
+|                            |
+|____________________________|
+
+---------------------------------------------------------------------
+Nume: Dragomir Andrei
+Grupa: 332CA
+
+NETWORKING
+
+----------------------------------------------------------------------------
+------------------------SWITCH PYTHON IMPLEMENTATION------------------------
+----------------------------------------------------------------------------
+
+
+    IMPLEMENTED ALL TASKS (1, 2, 3)
+
+			CONTENT
+
+	- switch.py - the python implementation of the switch.
+    - wrapper.py - the python wrapper for C functions used for sending and
+                    receiving data.
+
+	- Makefile.
+
+	- README.
+
+
+----------------------------------------------------------------------------
+
+____________Description___________
+
+    **Switch**
+
+        Switches are networking devices that connect other devices on a network by
+    using packet switching to receive, process and forward data to the
+    destination device. Switches are the most common form of network
+    devices as they are used in almost every network.
+
+        The switch uses algorithms for populating the CAM table, for 
+    forwarding packets to correct VLANs and for avoiding loops in the
+    network via the Spanning Tree Protocol.
+
+        The switch is implemented in Python and uses the socket library
+    from C with wrappers over C functions. The switch works all 3 algorithms
+    in once by running a STP algorithm to decide blocking, designated and
+    root ports on each switch and forwarding packets to the correct VLANs
+    while populating their CAM tables to forward directly when possible.
+
+-----------------------------------------------------------------------------
+
+
+
+------------------------------------------------------------------------------
+
+____________Implementation____________
+
+
+    Implementation was done via multithreading. The switch has 2 threads
+running in parallel. One thread is used for receiving packets and the other
+just send bpdu packets to the other switches. 
+
+    The thread that send bpdu packets is the one that runs the STP algorithm.
+The bpdu packets look like this:
+
++-----------+-----------+-------------+-------------+--------------+----------------------------------+
+| DST_MAC   | SRC_MAC   | LLC_LENGTH  | LLC_HEADER  | BPDU_HEADER  | BPDU_CONFIG                      |
++-----------+-----------+-------------+-------------+--------------+----------------------------------+
+| 6 bytes   | 6 bytes   | 2 bytes     | 3 bytes     | 4 bytes      | 1+8+4+8+2+2+2+2+2 = 31 bytes     |
+| Multicast | Switch MAC| Total of    | DSAP, SSAP, | Protocol ID, | Flags, Root Bridge ID,           |
+| Address   | Address   | LLC_HEADER  | Control     | Version, Type| Root Path Cost, Bridge ID,       |
+|           |           | and BPDU    |             |              | Port ID, Message Age, Max Age,   |
+|           |           | HEADER      |             |              | Hello Time, Forward Delay        |
++-----------+-----------+-------------+-------------+--------------+----------------------------------+
+
+    -create_bpdu constructs a BPDU packet with a defined structure including
+      destination MAC (multicast), source MAC, LLC header, and BPDU configuration details.
+
+    -send_bpdu transmits the constructed BPDU packet to a specified network interface.
+
+    -send_bpdu_every_second is a routine that sends out BPDUs every second if the
+      current switch is identified as the root switch.
+
+    DST_MAC: A 6-byte destination MAC address, typically a multicast address.
+
+    SRC_MAC: A 6-byte source MAC address retrieved from the switch's configuration.
+
+    LLC_LENGTH: A 2-byte field indicating the total length of the LLC_HEADER and BPDU_HEADER.
+
+    LLC_HEADER: A 3-byte header consisting of DSAP, SSAP, and Control fields.
+
+    BPDU_HEADER: A 4-byte header including protocol ID, version, and type.
+
+    BPDU_CONFIG: A 31-byte configuration block containing flags, root bridge ID,
+     root path cost, bridge ID, port ID, message age, max age, hello time, and forward delay.
+
+
+
+    The thread that receives packets is the one that runs the forwarding (the main thread).
+It can also receive bpdu packets and parse them.
+
+    ## Functionality
+
+    - **Parse BPDU**: Extracts relevant information from a BPDU packet such as 
+        root bridge ID, sender path cost, and sender bridge ID.
+
+    - **STP State Decisions**: Determines the STP states for ports based 
+        on BPDU content and current switch state.
+
+    - **State Updates**: Updates the STP states across the network 
+        interfaces accordingly.
+
+    
+    ## Flow
+
+    1. **Comparison**: Compare received BPDU's root bridge ID with the current known root.
+
+    2. **Update**: If the received BPDU has a superior root bridge ID, update the root
+        bridge ID and path cost.
+
+    3. **STP State**: Adjust the STP state of ports based on the comparison.
+
+    4. **Forwarding**: Forward the updated BPDU to all other trunk ports if necessary.
+
+    The function modifies states and aspects of STP via parameters and
+    returns them in the main function to continue the flow.
+
+
+    The function that does the actual forward has a flow like this:
+
+
+  [ Start ]
+  |
+  |--[ Unicast ]--(dst_mac in mac_cam_table?)--> [ Modify Packet ] --(Trunk and not blocking?)--> [ Send to Trunk ]
+  |                                                           |
+  |                                                           |--(Same VLAN?)---------------------------> [ Send to VLAN ]
+  |                                                           |
+  |                                                           |--(Access to Access?)-------------------> [ Send to Access ]
+  |
+  |--[ Broadcast ]--(For all interfaces except src)--> [ Modify Packet ] --(Trunk and not blocking?)--> [ Send to Trunk ]
+                                                                        |
+                                                                        |--(Same VLAN?)---------------------------> [ Send to VLAN ]
+                                                                        |
+                                                                        |--(Access to Access?)-------------------> [ Send to Access ]
+
+
+
+
+    Unicast/Broadcast: Determines if the packet is unicast (has a specific destination MAC)
+                       or broadcast (needs to be sent to all ports).
+
+    Modify Packet: Based on the VLAN ID and interface type, the packet may
+                   be modified (e.g., VLAN tag added or removed).
+
+    Send to Trunk: If the destination is a trunk port and it is not in a blocking 
+                   state, the packet is forwarded to that trunk interface.
+
+    Send to VLAN: If the packet's VLAN ID matches the VLAN configuration of the
+                  destination interface, it is forwarded to that interface.
+
+    Send to Access: If the packet is received from an access port and is to 
+                    be sent to another access port in the same VLAN, it is forwarded.
+
+    Forwarding Cases:
+    Unicast: If the destination MAC is in the MAC/CAM table,
+     the packet is forwarded to the corresponding interface after any necessary 
+     modifications.
+
+    Broadcast: The packet is sent to all interfaces except the source interface,
+     after modifications.
+
+    Trunk and VLAN Handling: For both unicast and broadcast cases, the packet is 
+     only forwarded if the interface is a trunk or the VLAN IDs match, and the 
+     STP state is not blocking.
+
+    Access to Access within Same VLAN: When a packet is received and sent from 
+     access ports within the same VLAN, it is forwarded.
+
+    Note: The modify_packet function is called to handle VLAN tag modifications 
+     for packets transitioning between trunk and access interfaces. If the source
+     interface is an access port and the destination is a trunk, a VLAN tag is added.
+     Conversely, if the source is a trunk and the destination is access, the VLAN 
+     tag is removed.
+
+
+------------------------------------------------------------------------------
+
+
+
+
+------------------------------------------------------------------------------
+
+_____________Comments_____________
+
+	
+	The implementation could have been done faster and better if I 
+understood the theoretic part easier and realized how to debug sending
+packets faster.
+
+    The more complicated part was making sure I put the VLAN tags in 
+a correct manner and I send the packages modified correctly as well
+as debugging the STP algorithm.
+
+    I believe that Python is a great choice for implementing such
+algorithms because it is easier to use and manage many data structure,
+unlike othe C like languages used for projects like this before.
+
+    After completing the implementation I can say I have a better
+understanding of how a switch works and how it runs its algorithms
+to make sure the network is running smoothly.
+
+
+------------------------------------------------------------------------------
+
+
+
+------------------------------------------------------------------------------
+
+
+______________How to run it_____________
+
+
+    sudo python3 checker/topo.py
+- runs the topology
+
+    make run_switch SWITCH_ID=X from the switch terminals
+- runs the switch with the id X
+
+    ping host0/1/2/3/4/5 from host terminals
+- pings the host with the id X
+
+    ./checker/checker.sh
+- runs the automated script to check if the implementation is correct
+
+
+-----------------------------------------------------------------------------
+
+
+
+
+-----------------------------------------------------------------------------
+
+
+Resources:
+
+https://ocw.cs.pub.ro/courses/rl/teme/tema1_sw
+
+https://gitlab.cs.pub.ro/rl/tema1-public
+
+https://techhub.hpe.com/eginfolib/networking/docs/switches/5980/5200-3921_l2-lan_cg/content/499036672.htm
+
+
+-----------------------------------------------------------------------------

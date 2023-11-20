@@ -58,7 +58,7 @@ class currentSTPState:
 
 def parse_ethernet_header(data):
     # Unpack the header fields from the byte array
-    # dest_mac, src_mac, ethertype = struct.unpack('!6s6sH', data[:14])
+    # Dest_mac, src_mac, ethertype = struct.unpack('!6s6sH', data[:14])
     dest_mac = data[0:6]
     src_mac = data[6:12]
 
@@ -81,98 +81,98 @@ def parse_ethernet_header(data):
 
 def create_vlan_tag(vlan_id):
     # 0x8100 for the Ethertype for 802.1Q
-    # vlan_id & 0x0FFF ensures that only the last 12 bits are used
+    # Vlan_id & 0x0FFF ensures that only the last 12 bits are used
     return struct.pack('!H', 0x8200) + struct.pack('!H', vlan_id & 0x0FFF)
 
 
 def read_switch_config(switch_id, switch_config, switch_priorities):
-    # reads the switch configuration file from ./configs/switchX.config where X is the switch number
-    # structure of the file:
+    # Reads the switch configuration file from ./configs/switchX.config where X is the switch number
+    # Structure of the file:
     # PRIORITY
     # INTERFACE_NAME [VLAN_ID / TRUNK]
 
-    # open the file for the switch id
+    # Open the file for the switch id
     file = open("./configs/switch" + str(switch_id) + ".cfg", "r")
 
-    # read the priority on the first line
+    # Read the priority on the first line
     priority = file.readline()
 
-    # store the priority in the switch_priorities
+    # Store the priority in the switch_priorities
     switch_priorities[switch_id] = priority
 
-    # define increasing interface id
+    # Define increasing interface id
     interface_id = 0
 
-    # parse every line with the interface name and vlan id or trunk type and store it in the switch_config
+    # Parse every line with the interface name and vlan id or trunk type and store it in the switch_config
     for line in file:
-        # pass first line
+        # Pass first line
         if line == priority:
             continue
 
-        # split the line into the interface name and vlan id or trunk type
+        # Split the line into the interface name and vlan id or trunk type
         interface_name, vlan_id_or_trunk_type = line.split()
 
-        # add the interface name and vlan id or trunk type to the switch_config
+        # Add the interface name and vlan id or trunk type to the switch_config
         switch_config[interface_id] = vlan_id_or_trunk_type
 
-        # increase the interface id
+        # Increase the interface id
         interface_id += 1
 
 
 def forward(src_mac, dst_mac, vlan_id, interface, ethertype,
             mac_cam_table, switch_config, data, length,
             interfaces, stp_states, switch_id):
-    # add the src_mac to the mac_cam_table if it is not already there
+    # Add the src_mac to the mac_cam_table if it is not already there
     if src_mac not in mac_cam_table:
         mac_cam_table[src_mac] = interface
 
-    # if the type of packet is unicast, then forward the packet to the interface
-    # that is in the mac_cam_table
+    # If the type of packet is unicast, then forward the packet to the interface
+    # That is in the mac_cam_table
     if dst_mac in mac_cam_table:
-        # make a copy of the packet
+        # Make a copy of the packet
         data_copy = data
         length_copy = length
 
-        # modify packet if necessary
+        # Modify packet if necessary
         data_copy, length_copy = modify_packet(
             vlan_id, mac_cam_table[dst_mac], switch_config, data_copy, length_copy, interfaces, ethertype, interface)
 
-        # send the packet to the interface that is in the mac_cam_table if it is trunk type or same vlan
+        # Send the packet to the interface that is in the mac_cam_table if it is trunk type or same vlan
         if switch_config[mac_cam_table[dst_mac]] == "T":
-            # if the interface is not blocking
+            # If the interface is not blocking
             if stp_states[(switch_id, mac_cam_table[dst_mac])] != 0:
                 send_to_link(mac_cam_table[dst_mac], data_copy, length_copy)
 
         elif vlan_id == int(switch_config[mac_cam_table[dst_mac]]):
             send_to_link(mac_cam_table[dst_mac], data_copy, length_copy)
 
-        # else if we receive from access and send to access
+        # Else if we receive from access and send to access
         elif vlan_id == -1 and int(switch_config[mac_cam_table[dst_mac]]) == int(switch_config[interface]):
             send_to_link(mac_cam_table[dst_mac], data_copy, length_copy)
 
     else:
-        # if the type of packet is broadcast, then forward the packet to all
-        # interfaces except the one that received the packet
+        # If the type of packet is broadcast, then forward the packet to all
+        # Interfaces except the one that received the packet
         for i in interfaces:
             if i != interface:
-                # make a copy of the packet
+                # Make a copy of the packet
                 data_copy = data
                 length_copy = length
 
-                # modify packet if necessary
+                # Modify packet if necessary
                 data_copy, length_copy = modify_packet(vlan_id, i, switch_config,
                                                        data_copy, length_copy, interfaces, ethertype, interface)
 
-                # send the packet to the interface if it is trunk type or same vlan
+                # Send the packet to the interface if it is trunk type or same vlan
                 if switch_config[i] == "T":
-                    # if the interface is not blocking
+                    # If the interface is not blocking
                     if stp_states[(switch_id, i)] != 0:
                         send_to_link(i, data_copy, length_copy)
 
                 elif vlan_id == int(switch_config[i]):
                     send_to_link(i, data_copy, length_copy)
 
-                # else if we receive from access and send to access
+                # Else if we receive from access and send to access
                 elif vlan_id == -1 and int(switch_config[i]) == int(switch_config[interface]):
                     send_to_link(i, data_copy, length_copy)
 
@@ -180,43 +180,43 @@ def forward(src_mac, dst_mac, vlan_id, interface, ethertype,
 def modify_packet(vlan_id, dst_interface, switch_config, data, length,
                   interfaces, ethertype, src_interface):
     if dst_interface in interfaces:
-        # if the packet is coming from access port
+        # If the packet is coming from access port
         if vlan_id == -1:
-            # if the interface is trunk type
+            # If the interface is trunk type
             if switch_config[dst_interface] == "T":
-                # add the vlan tag to the packet
+                # Add the vlan tag to the packet
                 data = data[0:12] + \
                     create_vlan_tag(
                         int(switch_config[src_interface])) + data[12:]
 
-                # increase the length of the packet
+                # Increase the length of the packet
                 length += 4
 
-        # if the packet is coming from trunk port
+        # If the packet is coming from trunk port
         else:
-            # if the interface is access type then remove the vlan tag
+            # If the interface is access type then remove the vlan tag
             if switch_config[dst_interface] != "T":
-                # remove the vlan tag from the packet
+                # Remove the vlan tag from the packet
                 data = data[0:12] + data[16:]
 
-                # decrease the length of the packet
+                # Decrease the length of the packet
                 length -= 4
 
     return data, length
 
 
 def create_bpdu(root_bridge_id_p, sender_bridge_id, sender_path_cost_p):
-    # creates bpdu packet with structure
+    # Creates bpdu packet with structure
     # DST_MAC|SRC_MAC|LLC_LENGTH|LLC_HEADER|BPDU_HEADER|BPDU_CONFIG
     # LLC_LENGTH is the total length of the LLC_HEADER and BPDU_HEADER
     # LLC_HEADER has the following structure
     # DSAP (Destination Service Access Point)|SSAP (Source Service Access Point)|Control
     # DSAP and SSAP will be 0x42 and control will be 0x03.
 
-    # dsc_mac is 01:80:C2:00:00:00 multicast address
+    # Dsc_mac is 01:80:C2:00:00:00 multicast address
     dst_mac = b'\x01\x80\xc2\x00\x00\x00'
 
-    # src_mac is the sender mac address computed with get_switch_mac
+    # Src_mac is the sender mac address computed with get_switch_mac
     src_mac = get_switch_mac()
 
     # llc_length is 52
@@ -225,13 +225,13 @@ def create_bpdu(root_bridge_id_p, sender_bridge_id, sender_path_cost_p):
     # llc_header is 0x42 0x42 0x03
     llc_header = b'\x42\x42\x03'
 
-    # bpdu_header is protocol id, protocol version id, bpdu type
-    # protocol id is 0x00 0x00
-    # protocol version id is 0x00
-    # bpdu type is 0x00
+    # Bpdu_header is protocol id, protocol version id, bpdu type
+    # Protocol id is 0x00 0x00
+    # Protocol version id is 0x00
+    # Bpdu type is 0x00
     bpdu_header = b'\x00\x00\x00\x00'
 
-    # bpdu config has the structure:
+    # Bpdu config has the structure:
     #   uint8_t  flags;
     #   uint8_t  root_bridge_id[8];
     #   uint32_t root_path_cost;
@@ -241,34 +241,34 @@ def create_bpdu(root_bridge_id_p, sender_bridge_id, sender_path_cost_p):
     #   uint16_t max_age;
     #   uint16_t hello_time;
     #   uint16_t forward_delay;
-    # set flags to 0
+    # Set flags to 0
     flags = 0
 
-    # copy bytes from root_bridge_id_p to root_bridge_id
+    # Copy bytes from root_bridge_id_p to root_bridge_id
     root_bridge_id = root_bridge_id_p.to_bytes(8, byteorder='big')
 
-    # copy bytes from sender_path_cost_p to root_path_cost
+    # Copy bytes from sender_path_cost_p to root_path_cost
     root_path_cost = sender_path_cost_p.to_bytes(4, byteorder='big')
 
-    # copy bytes from sender_bridge_id_p to bridge_id
+    # Copy bytes from sender_bridge_id_p to bridge_id
     bridge_id = sender_bridge_id.to_bytes(8, byteorder='big')
 
-    # set port_id to 0
+    # Set port_id to 0
     port_id = 0
 
-    # set message_age to 0
+    # Set message_age to 0
     message_age = 0
 
-    # set max_age to 20
+    # Set max_age to 20
     max_age = 20
 
-    # set hello_time to 2
+    # Set hello_time to 2
     hello_time = 2
 
-    # set forward_delay to 15
+    # Set forward_delay to 15
     forward_delay = 15
 
-    # create the bpdu config
+    # Create the bpdu config
     bpdu_config = flags.to_bytes(1, byteorder='big') + root_bridge_id + \
         root_path_cost + bridge_id + port_id.to_bytes(2, byteorder='big') + \
         message_age.to_bytes(2, byteorder='big') + \
@@ -281,47 +281,44 @@ def create_bpdu(root_bridge_id_p, sender_bridge_id, sender_path_cost_p):
 
 
 def send_bpdu(interface, root_bridge_id, sender_bridge_id, sender_path_cost):
-    # create the bpdu packet
+    # Create the bpdu packet
     bpdu = create_bpdu(root_bridge_id, sender_bridge_id, sender_path_cost)
 
-    # send the bpdu packet to the interface
+    # Send the bpdu packet to the interface
     send_to_link(interface, bpdu, len(bpdu))
 
 
 def send_bpdu_every_second(interfaces, switch_config, switch_priorities, currentSTPState):
-    # every 1 second, if we are root switch, sends out BPDUs
+    # Every 1 second, if we are root switch, sends out BPDUs
     while True:
         if int(switch_priorities[currentSTPState.getCurrentSwitch()]) == currentSTPState.getRootBridge():
-            # send out BPDUs
+            # Send out BPDUs
             for i in interfaces:
                 if switch_config[i] == "T":
                     # Set sender path cost to 0
                     sender_path_cost = 0
 
-                    print("Sending BPDU from SWITCH ", currentSTPState.getCurrentSwitch(),
-                          " on interface ", i)
                     # Send BPDU
                     send_bpdu(i, currentSTPState.getRootBridge(),
                               int(switch_priorities[currentSTPState.getCurrentSwitch()]), sender_path_cost)
 
-        # wait 1 second
+        # Wait 1 second
         time.sleep(1)
 
 
 def prepare_stp(switch_id, interfaces, stp_states, switch_config,
                 switch_priorities):
-    # prepare the stp states
-    # for each trunk port on the switch, set it as blocking
+    # For each trunk port on the switch, set it as blocking
     for i in interfaces:
         if switch_config[i] == "T":
             stp_states[(switch_id, i)] = 0
 
-    # set own bridge id as the priority from config
+    # Set own bridge id as the priority from config
     own_bridge_id = int(switch_priorities[switch_id])
     root_bridge_id = own_bridge_id
     root_path_cost = 0
 
-    # if port becomes root bridge, set it as designated
+    # If port becomes root bridge, set it as designated
     if own_bridge_id == root_bridge_id:
         for i in interfaces:
             if switch_config[i] == "T":
@@ -337,19 +334,7 @@ def parse_bpdu(bpdu, currentState, interface, interfaces,
     sender_path_cost = int.from_bytes(bpdu[30:34], byteorder='big')
     sender_bridge_id = int.from_bytes(bpdu[34:42], byteorder='big')
 
-    print("Parsed Root Bridge ID: " + str(root_bridge_id))
-    print("Parsed Sender Path Cost: " + str(sender_path_cost))
-    print("Parsed Sender Bridge ID: " + str(sender_bridge_id))
-    print("Global root Bridge ID: " + str(currentState.getRootBridge()))
-    print("Global root Path Cost: " + str(currentState.getRootPathCost()))
-    print("Port ID: " + str(port))
-
-    print("Comparing ROOT_BID " + str(root_bridge_id) +
-          " and GLOBAL_ROOT_BID " + str(currentState.getRootBridge()))
-
-    print("Comparing SENDER_BID " + str(sender_bridge_id) +
-          " and OWN_BID " + str(currentState.getRootBridge()))
-
+    # Set root_port to default value
     root_port = -1
 
     if root_bridge_id < currentState.getRootBridge():
@@ -364,7 +349,6 @@ def parse_bpdu(bpdu, currentState, interface, interfaces,
             for i in interfaces:
                 if switch_config[i] == "T":
                     if i != root_port:
-                        print("Setting " + str(i) + " to BLOCKING")
                         stp_states[(currentState.getCurrentSwitch(), i)] = 0
             currentState.setCurrentIsRootBridge(False)
 
@@ -379,81 +363,69 @@ def parse_bpdu(bpdu, currentState, interface, interfaces,
         for i in interfaces:
             if switch_config[i] == "T":
                 if i != port:
-                    print("Sending BPDU on " + str(i))
                     sender_bridge_id = own_bridge_id
                     send_bpdu(i, root_bridge_id,
                               sender_bridge_id, currentState.getRootPathCost())
 
-    # else if BPDU.root_bridge_ID == root_bridge_ID
     elif root_bridge_id == currentState.getRootBridge():
         if port == root_port and sender_path_cost + 10 < currentState.getRootPathCost():
             currentState.setRootPathCost(sender_path_cost + 10)
+        # Check if port has to be set to designated
         elif port != root_port:
             if sender_path_cost > currentState.getRootPathCost():
                 if stp_states[(currentState.getCurrentSwitch(), port)] != 1:
                     stp_states[(currentState.getCurrentSwitch(), port)] = 1
 
     elif sender_bridge_id == currentState.getRootBridge():
-        # set the port to BLOCKING
-        print("Setting " + str(port) + " to BLOCKING")
+        # If loop detected, set port to BLOCKING
         stp_states[(currentState.getCurrentSwitch(), port)] = 0
 
-    # Set as designated if we are the root bridge
+    # Set all ports on root bridge to designated
     if own_bridge_id == root_bridge_id:
         for i in interfaces:
             if switch_config[i] == "T":
                 if stp_states[(currentState.getCurrentSwitch(), i)] != 1:
                     stp_states[(currentState.getCurrentSwitch(), i)] = 1
 
-    print()
-
     return currentState, stp_states
 
 
 def main():
-    # init returns the max interface number. Our interfaces
+    # Init returns the max interface number. Our interfaces
     # are 0, 1, 2, ..., init_ret value + 1
     switch_id = sys.argv[1]
 
-    # print the switch id
+    # Print the switch id
     print("SWITCH ID: " + str(switch_id))
 
-    # make mac CAM table for the switch
+    # Make mac CAM table for the switch
     mac_cam_table = {}
 
-    # create the sitch configuration dictionary
+    # Create the sitch configuration dictionary
     switch_config = {}
 
-    # create the switch priorities dictionary
+    # Create the switch priorities dictionary
     switch_priorities = {}
 
-    # create the stp data struct containing pairs {(switch_id, interface) -> state}
-    # state are BLOCKING = 0, DESIGNATED = 1, LISTENING = 2
+    # Create the stp data struct containing pairs {(switch_id, interface) -> state}
+    # State are BLOCKING = 0, DESIGNATED = 1, LISTENING = 2
     stp_states = {}
 
-    # read the switch configuration file
+    # Read the switch configuration file
     read_switch_config(switch_id, switch_config, switch_priorities)
 
     num_interfaces = wrapper.init(sys.argv[2:])
     interfaces = range(0, num_interfaces)
 
-    print("# Starting switch with id {}".format(switch_id), flush=True)
-    print("[INFO] Switch MAC", ':'.join(f'{b:02x}' for b in get_switch_mac()))
-
     # Prepare the STP algorithm
     own_bridge_id, root_bridge_id, root_path_cost, stp_states = prepare_stp(
         switch_id, interfaces, stp_states, switch_config, switch_priorities)
 
+    # Create the current state object
     currentState = currentSTPState(
         own_bridge_id, switch_id, root_bridge_id, root_path_cost, switch_id, True)
 
-    # Print the prepared STP results
-    print("[INFO] Prepared STP results")
-    print("own_bridge_id: " + str(own_bridge_id))
-    print("root_bridge_id: " + str(root_bridge_id))
-    print("root_path_cost: " + str(root_path_cost))
-
-    # start the thread that sends out BPDUs every second
+    # Start the thread that sends out BPDUs every second
     t = threading.Thread(target=send_bpdu_every_second, args=(
         interfaces, switch_config, switch_priorities, currentState))
     t.start()
@@ -471,20 +443,17 @@ def main():
         dest_mac = ':'.join(f'{b:02x}' for b in dest_mac)
         src_mac = ':'.join(f'{b:02x}' for b in src_mac)
 
-        # Note. Adding a VLAN tag can be as easy as
-        # tagged_frame = data[0:12] + create_vlan_tag(10) + data[12:]
-
-        # if the frame is a BPDU, parse it and update the STP state
+        # If the frame is a BPDU, parse it and update the STP state
         if dest_mac == "01:80:c2:00:00:00":
             currentState, stp_states = parse_bpdu(data, currentState, interface, interfaces,
                                                   stp_states, switch_config, own_bridge_id, interface)
-            # print ports statuses
+            # Print ports statuses
             print("[INFO] PORT states")
             for (switch_id, interface), state in stp_states.items():
                 print("switch_id: " + str(switch_id) + " interface: " +
                       str(interface) + " state: " + str(state))
 
-            # else if the frame is a data frame, forward it
+        # Else if the frame is a data frame, forward it
         else:
             forward(src_mac, dest_mac, vlan_id, interface,
                     ethertype, mac_cam_table, switch_config,
